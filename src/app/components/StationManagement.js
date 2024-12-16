@@ -26,45 +26,6 @@ const debounce = (func, wait) => {
   };
 };
 
-// Funzione di formattazione indirizzo
-const formatAddressComponents = (address) => {
-  if (!address) return '';
-  const components = [];
-  const street = address.road || address.street || '';
-  const houseNumber = address.house_number || '';
-  
-  if (street || houseNumber) {
-    components.push([street, houseNumber].filter(Boolean).join(' '));
-  }
-  
-  const city = address.city || address.town || address.village || '';
-  if (city) {
-    components.push(city);
-  }
-  
-  const postcode = address.postcode || '';
-  if (postcode) {
-    if (!components[components.length - 1]?.includes(postcode)) {
-      components[components.length - 1] = `${components[components.length - 1]} ${postcode}`;
-    }
-  }
-  
-  const province = address.state || address.county || '';
-  if (province && !city?.includes(province)) {
-    components.push(province);
-  }
-  
-  const country = address.country || '';
-  if (country) {
-    components.push(country);
-  }
-  
-  return components
-    .filter(Boolean)
-    .filter(component => !component.includes('undefined'))
-    .join(', ');
-};
-
 // Componente per gli errori dell'API
 const AddressError = ({ message }) => (
   <Alert className="mt-2">
@@ -113,13 +74,14 @@ const StationManagement = ({
     power: '',
     connectorType: '',
     currentType: '',
-    additionalInfo: '' // Nuovo campo per informazioni aggiuntive
+    additionalInfo: ''
   });
   const [reviewData, setReviewData] = useState({
     rating: 5,
     comment: ''
   });
 
+  // Funzione per cercare gli indirizzi tramite OpenStreetMap
   const searchAddresses = useCallback(
     debounce(async (query) => {
       if (query.length < 3) {
@@ -134,18 +96,20 @@ const StationManagement = ({
 
       try {
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=5&countrycodes=it&addressdetails=1`
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=it&addressdetails=1`
         );
+        
         if (!response.ok) throw new Error('Errore nella ricerca degli indirizzi');
 
         const data = await response.json();
+        
         if (data.length === 0) {
           setAddressError("Nessun risultato trovato per questo indirizzo");
           setAddressSuggestions([]);
         } else {
           const formattedSuggestions = data.map(suggestion => ({
             ...suggestion,
-            formattedAddress: formatAddressComponents(suggestion.address)
+            formattedAddress: cleanDisplayAddress(suggestion.display_name)
           }));
           setAddressSuggestions(formattedSuggestions);
           setShowSuggestions(true);
@@ -154,7 +118,6 @@ const StationManagement = ({
         console.error('Errore nella ricerca indirizzi:', error);
         setAddressError("Errore nel caricamento dei suggerimenti. Riprova più tardi.");
         setAddressSuggestions([]);
-        setShowSuggestions(false);
       } finally {
         setIsLoading(false);
       }
@@ -163,37 +126,27 @@ const StationManagement = ({
   );
 
   const handleAddressSelection = (suggestion) => {
-    try {
-      const address = suggestion.address || {};
-      if (!address.road && !address.house_number) {
-        setAddressError('Indirizzo incompleto. Seleziona un indirizzo con via e numero.');
-        return;
-      }
-
-      const lat = parseFloat(suggestion.lat);
-      const lon = parseFloat(suggestion.lon);
-      if (isNaN(lat) || isNaN(lon)) {
-        setAddressError('Coordinate non valide. Seleziona un altro indirizzo.');
-        return;
-      }
-
-      const formattedAddress = formatAddressComponents(address);
-      setNewStationData({
-        ...newStationData,
-        displayAddress: formattedAddress,
-        address: formattedAddress,
-        latitude: lat,
-        longitude: lon
-      });
-      setShowSuggestions(false);
-      setAddressError(null);
-    } catch (error) {
-      console.error('Errore nella selezione dell\'indirizzo:', error);
-      setAddressError('Errore nella selezione dell\'indirizzo. Riprova.');
+    const lat = parseFloat(suggestion.lat);
+    const lon = parseFloat(suggestion.lon);
+    
+    if (isNaN(lat) || isNaN(lon)) {
+      setAddressError('Coordinate non valide. Seleziona un altro indirizzo.');
+      return;
     }
+
+    setNewStationData({
+      ...newStationData,
+      displayAddress: suggestion.formattedAddress,
+      address: suggestion.formattedAddress,
+      latitude: lat,
+      longitude: lon
+    });
+    
+    setShowSuggestions(false);
+    setAddressError(null);
   };
 
-  const handleAddStation = (e) => {
+  const handleAddStation = async (e) => {
     e.preventDefault();
     const validationErrors = [];
 
@@ -218,11 +171,10 @@ const StationManagement = ({
       return;
     }
 
+    setIsLoading(true);
+
     try {
-      onAddStation({
-        ...newStationData,
-        power: parseFloat(newStationData.power)
-      });
+      await onAddStation(newStationData);
       setNewStationData({
         address: '',
         displayAddress: '',
@@ -236,8 +188,9 @@ const StationManagement = ({
       setShowAddStation(false);
       setAddressError(null);
     } catch (error) {
-      console.error('Errore nel salvataggio della stazione:', error);
       setAddressError('Errore nel salvataggio della stazione. Riprova.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -280,19 +233,18 @@ const StationManagement = ({
                     setNewStationData({ ...newStationData, address: value });
                     searchAddresses(value);
                   }}
-                  onFocus={() => {
-                    if (addressSuggestions.length > 0) {
-                      setShowSuggestions(true);
-                    }
-                  }}
+                  disabled={isLoading}
                   required
                 />
+                
                 {isLoading && (
                   <div className="text-sm text-gray-500 mt-2">
                     Ricerca in corso...
                   </div>
                 )}
+                
                 {addressError && <AddressError message={addressError} />}
+                
                 {showSuggestions && addressSuggestions.length > 0 && (
                   <div className="absolute z-10 w-full bg-white mt-1 rounded-md shadow-lg max-h-60 overflow-auto">
                     {addressSuggestions.map((suggestion, index) => (
@@ -316,12 +268,15 @@ const StationManagement = ({
                   onChange={(e) => setNewStationData({ ...newStationData, power: e.target.value })}
                   min="0"
                   step="0.1"
+                  disabled={isLoading}
                   required
                 />
+                
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={newStationData.connectorType}
                   onChange={(e) => setNewStationData({ ...newStationData, connectorType: e.target.value })}
+                  disabled={isLoading}
                   required
                 >
                   <option value="">Tipo connettore</option>
@@ -336,6 +291,7 @@ const StationManagement = ({
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={newStationData.currentType}
                 onChange={(e) => setNewStationData({ ...newStationData, currentType: e.target.value })}
+                disabled={isLoading}
                 required
               >
                 <option value="">Tipo corrente</option>
@@ -354,11 +310,18 @@ const StationManagement = ({
                   placeholder="Inserisci informazioni aggiuntive (es. numero di telefono, indicazioni, orari...)"
                   value={newStationData.additionalInfo}
                   onChange={(e) => setNewStationData({ ...newStationData, additionalInfo: e.target.value })}
+                  disabled={isLoading}
                 />
               </div>
 
               <div className="flex gap-2">
-                <Button type="submit" className="flex-1">Conferma</Button>
+                <Button 
+                  type="submit" 
+                  className="flex-1"
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Salvataggio...' : 'Conferma'}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -367,6 +330,7 @@ const StationManagement = ({
                     setAddressError(null);
                   }}
                   className="flex-1"
+                  disabled={isLoading}
                 >
                   Annulla
                 </Button>
@@ -403,7 +367,7 @@ const StationManagement = ({
                             <span className="font-medium">Connettore:</span> {station.connectorType}
                           </p>
                         )}
-                       {station.currentType && (
+                        {station.currentType && (
                           <p className="text-sm">
                             <span className="font-medium">Corrente:</span> {station.currentType}
                           </p>
@@ -425,7 +389,7 @@ const StationManagement = ({
                     <span className={`text-sm ${station.available ? 'text-green-600' : 'text-red-600'}`}>
                       ● {station.available ? 'Disponibile' : 'In uso'}
                     </span>
-                    {station.ownerId === user.id ? (
+                    {station.owner === user.id ? (
                       <div className="flex gap-2">
                         <Button
                           size="sm"
@@ -461,7 +425,7 @@ const StationManagement = ({
                   <div className="pt-2 border-t mt-2">
                     <div className="flex justify-between items-center mb-2">
                       <h4 className="text-sm font-medium">Recensioni</h4>
-                      {station.ownerId !== user.id && !showReviewForm && (
+                      {station.owner !== user.id && !showReviewForm && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -487,14 +451,19 @@ const StationManagement = ({
                         <div className="flex gap-2">
                           <Button
                             size="sm"
-                            onClick={() => {
+                            onClick={async () => {
                               if (!reviewData.comment.trim()) {
                                 alert('Inserisci un commento per la recensione');
                                 return;
                               }
-                              onAddReview(station.id, reviewData);
-                              setShowReviewForm(null);
-                              setReviewData({ rating: 5, comment: '' });
+                              try {
+                                await onAddReview(station.id, reviewData);
+                                setShowReviewForm(null);
+                                setReviewData({ rating: 5, comment: '' });
+                              } catch (error) {
+                                console.error('Error adding review:', error);
+                                alert('Errore nell\'aggiunta della recensione');
+                              }
                             }}
                           >
                             Invia
@@ -517,7 +486,7 @@ const StationManagement = ({
                           <div key={review.id} className="text-sm">
                             <div className="flex items-center gap-2">
                               <RatingStars rating={review.rating} />
-                              <span className="text-gray-600">- {review.user}</span>
+                              <span className="text-gray-600">- {review.userName}</span>
                             </div>
                             <p className="text-gray-600 mt-1">{review.comment}</p>
                           </div>

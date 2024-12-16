@@ -1,10 +1,12 @@
+'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { User, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { authService } from '@/lib/services/api';
 
 const Auth = ({ onLogin }) => {
   const [isRegistration, setIsRegistration] = useState(false);
@@ -20,80 +22,78 @@ const Auth = ({ onLogin }) => {
   const [verificationCode, setVerificationCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [errors, setErrors] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
 
-  const loadUsers = () => {
-    const savedUsers = localStorage.getItem('users');
-    return savedUsers ? JSON.parse(savedUsers) : [];
-  };
-
-  const saveUsers = (users) => {
-    localStorage.setItem('users', JSON.stringify(users));
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const newErrors = {};
-    const users = loadUsers();
+    setErrors({});
+    setIsLoading(true);
 
-    if (isRegistration) {
-      // Controllo se l'email è già registrata
-      if (users.some(user => user.email === formData.email)) {
-        newErrors.email = 'Email già registrata';
-      }
+    try {
+      if (isRegistration) {
+        // Validazione
+        const newErrors = {};
+        if (!formData.firstName.trim()) newErrors.firstName = 'Nome richiesto';
+        if (!formData.lastName.trim()) newErrors.lastName = 'Cognome richiesto';
+        if (!formData.email.trim()) newErrors.email = 'Email richiesta';
+        if (!formData.password) newErrors.password = 'Password richiesta';
+        if (formData.password !== formData.confirmPassword) {
+          newErrors.confirmPassword = 'Le password non coincidono';
+        }
 
-      if (!formData.firstName.trim()) newErrors.firstName = 'Nome richiesto';
-      if (!formData.lastName.trim()) newErrors.lastName = 'Cognome richiesto';
-      if (!formData.email.trim()) newErrors.email = 'Email richiesta';
-      if (!formData.password) newErrors.password = 'Password richiesta';
-      if (formData.password !== formData.confirmPassword) {
-        newErrors.confirmPassword = 'Le password non coincidono';
-      }
+        if (Object.keys(newErrors).length > 0) {
+          setErrors(newErrors);
+          return;
+        }
 
-      if (Object.keys(newErrors).length === 0) {
+        // Generazione codice di verifica
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         setGeneratedCode(code);
         setRegistrationStep(2);
-      }
-    } else {
-      // Login
-      const user = users.find(u => u.email === formData.email);
-      
-      if (!user) {
-        newErrors.email = 'Utente non trovato';
-      } else if (user.password !== formData.password) {
-        newErrors.password = 'Password non corretta';
-      }
-
-      if (Object.keys(newErrors).length === 0 && user) {
+        
+      } else {
+        // Login
+        const user = await authService.login({
+          email: formData.email,
+          password: formData.password
+        });
         onLogin(user);
-        return;
       }
+    } catch (error) {
+      setErrors({
+        submit: error.message
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    setErrors(newErrors);
   };
 
-  const handleVerification = (e) => {
+  const handleVerification = async (e) => {
     e.preventDefault();
-    if (verificationCode === generatedCode) {
-      const newUser = {
-        id: Date.now().toString(),
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        fullName: `${formData.firstName} ${formData.lastName}`,
-        email: formData.email,
-        password: formData.password,
-        minutes: 60
-      };
+    setErrors({});
+    setIsLoading(true);
 
-      const users = loadUsers();
-      users.push(newUser);
-      saveUsers(users);
-      onLogin(newUser);
-    } else {
-      setErrors({ verification: 'Codice non valido' });
+    try {
+      if (verificationCode === generatedCode) {
+        const user = await authService.register({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password
+        });
+        onLogin(user);
+      } else {
+        setErrors({ verification: 'Codice non valido' });
+      }
+    } catch (error) {
+      setErrors({
+        submit: error.message
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
+
   if (registrationStep === 2 && isRegistration) {
     return (
       <div className="space-y-4 text-center">
@@ -115,7 +115,9 @@ const Auth = ({ onLogin }) => {
               <AlertDescription>{errors.verification}</AlertDescription>
             </Alert>
           )}
-          <Button type="submit" className="w-full">Verifica</Button>
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? 'Verifica in corso...' : 'Verifica'}
+          </Button>
         </form>
       </div>
     );
@@ -128,8 +130,8 @@ const Auth = ({ onLogin }) => {
           {isRegistration ? 'Registrati' : 'Accedi'}
         </h2>
         <p className="text-gray-600 mt-2">
-          {isRegistration 
-            ? 'Crea un account per condividere o utilizzare le colonnine' 
+          {isRegistration
+            ? 'Crea un account per condividere o utilizzare le colonnine'
             : 'Accedi al tuo account'}
         </p>
       </div>
@@ -143,6 +145,7 @@ const Auth = ({ onLogin }) => {
                   placeholder="Nome"
                   value={formData.firstName}
                   onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  disabled={isLoading}
                 />
                 {errors.firstName && (
                   <Alert>
@@ -155,6 +158,7 @@ const Auth = ({ onLogin }) => {
                   placeholder="Cognome"
                   value={formData.lastName}
                   onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  disabled={isLoading}
                 />
                 {errors.lastName && (
                   <Alert>
@@ -175,6 +179,7 @@ const Auth = ({ onLogin }) => {
               className="pl-10"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              disabled={isLoading}
             />
           </div>
           {errors.email && (
@@ -193,6 +198,7 @@ const Auth = ({ onLogin }) => {
               className="pl-10"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              disabled={isLoading}
             />
             <button
               type="button"
@@ -219,6 +225,7 @@ const Auth = ({ onLogin }) => {
                 className="pl-10"
                 value={formData.confirmPassword}
                 onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                disabled={isLoading}
               />
             </div>
             {errors.confirmPassword && (
@@ -229,8 +236,14 @@ const Auth = ({ onLogin }) => {
           </div>
         )}
 
-        <Button type="submit" className="w-full">
-          {isRegistration ? 'Registrati' : 'Accedi'}
+        {errors.submit && (
+          <Alert>
+            <AlertDescription>{errors.submit}</AlertDescription>
+          </Alert>
+        )}
+
+        <Button type="submit" className="w-full" disabled={isLoading}>
+          {isLoading ? 'Elaborazione...' : (isRegistration ? 'Registrati' : 'Accedi')}
         </Button>
 
         <div className="text-center text-sm text-gray-500">
@@ -249,6 +262,7 @@ const Auth = ({ onLogin }) => {
               });
               setErrors({});
             }}
+            disabled={isLoading}
           >
             {isRegistration ? 'Accedi' : 'Registrati'}
           </button>
@@ -257,4 +271,5 @@ const Auth = ({ onLogin }) => {
     </div>
   );
 };
+
 export default Auth;

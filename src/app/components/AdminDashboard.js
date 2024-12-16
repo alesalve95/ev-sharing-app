@@ -22,6 +22,8 @@ const AdminDashboard = ({ onClose }) => {
   const [editingPassword, setEditingPassword] = useState(null);
   const [tempPassword, setTempPassword] = useState('');
   const [showPassword, setShowPassword] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -29,81 +31,177 @@ const AdminDashboard = ({ onClose }) => {
     }
   }, [isAuthenticated]);
 
-  const loadData = () => {
-    const savedUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    const savedStations = JSON.parse(localStorage.getItem('stations') || '[]');
-    setUsers(savedUsers);
-    setStations(savedStations);
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Chiamate API per ottenere utenti e stazioni
+      const response = await fetch('/api/admin/data', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        }
+      });
+
+      if (!response.ok) throw new Error('Errore nel caricamento dei dati');
+
+      const data = await response.json();
+      setUsers(data.users);
+      setStations(data.stations);
+    } catch (error) {
+      setError('Errore nel caricamento dei dati. Riprova più tardi.');
+      console.error('Error loading data:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (loginData.username === 'admin' && loginData.password === 'admin123') {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: loginData.username,
+          password: loginData.password
+        })
+      });
+
+      if (!response.ok) throw new Error('Credenziali non valide');
+
+      const data = await response.json();
+      localStorage.setItem('adminToken', data.token);
       setIsAuthenticated(true);
+    } catch (error) {
+      setError('Credenziali non valide');
+      console.error('Login error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleDeleteUser = (userId) => {
-    if (window.confirm('Sei sicuro di voler eliminare questo utente? Verranno eliminate anche tutte le sue colonnine.')) {
-      const updatedUsers = users.filter(user => user.id !== userId);
-      setUsers(updatedUsers);
-      localStorage.setItem('users', JSON.stringify(updatedUsers));
-      
-      const updatedStations = stations.filter(station => station.ownerId !== userId);
-      setStations(updatedStations);
-      localStorage.setItem('stations', JSON.stringify(updatedStations));
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Sei sicuro di voler eliminare questo utente? Verranno eliminate anche tutte le sue colonnine.')) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        }
+      });
+
+      if (!response.ok) throw new Error('Errore nell\'eliminazione dell\'utente');
+
+      setUsers(users.filter(user => user.id !== userId));
+      setStations(stations.filter(station => station.ownerId !== userId));
+    } catch (error) {
+      setError('Errore nell\'eliminazione dell\'utente');
+      console.error('Delete user error:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleUpdateMinutes = (userId) => {
+  const handleUpdateMinutes = async (userId) => {
     const minutes = parseInt(tempMinutes);
     if (isNaN(minutes) || minutes < 0) {
-      alert('Inserisci un numero valido di minuti');
+      setError('Inserisci un numero valido di minuti');
       return;
     }
 
-    updateUserField(userId, 'minutes', minutes);
-    setEditingMinutes(null);
-    setTempMinutes('');
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/admin/users/${userId}/minutes`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        body: JSON.stringify({ minutes })
+      });
+
+      if (!response.ok) throw new Error('Errore nell\'aggiornamento dei minuti');
+
+      const updatedUser = await response.json();
+      setUsers(users.map(user => user.id === userId ? updatedUser : user));
+      setEditingMinutes(null);
+      setTempMinutes('');
+    } catch (error) {
+      setError('Errore nell\'aggiornamento dei minuti');
+      console.error('Update minutes error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleUpdateEmail = (userId) => {
+  const handleUpdateEmail = async (userId) => {
     if (!tempEmail.trim() || !tempEmail.includes('@')) {
-      alert('Inserisci un indirizzo email valido');
+      setError('Inserisci un indirizzo email valido');
       return;
     }
 
-    updateUserField(userId, 'email', tempEmail);
-    setEditingEmail(null);
-    setTempEmail('');
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/admin/users/${userId}/email`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        body: JSON.stringify({ email: tempEmail })
+      });
+
+      if (!response.ok) throw new Error('Errore nell\'aggiornamento dell\'email');
+
+      const updatedUser = await response.json();
+      setUsers(users.map(user => user.id === userId ? updatedUser : user));
+      setEditingEmail(null);
+      setTempEmail('');
+    } catch (error) {
+      setError('Errore nell\'aggiornamento dell\'email');
+      console.error('Update email error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleUpdatePassword = (userId) => {
+  const handleUpdatePassword = async (userId) => {
     if (!tempPassword.trim() || tempPassword.length < 6) {
-      alert('La password deve essere di almeno 6 caratteri');
+      setError('La password deve essere di almeno 6 caratteri');
       return;
     }
 
-    updateUserField(userId, 'password', tempPassword);
-    setEditingPassword(null);
-    setTempPassword('');
-  };
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/admin/users/${userId}/password`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+        },
+        body: JSON.stringify({ password: tempPassword })
+      });
 
-  const updateUserField = (userId, field, value) => {
-    const updatedUsers = users.map(user => {
-      if (user.id === userId) {
-        const updatedUser = { ...user, [field]: value };
-        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-        if (currentUser.id === userId) {
-          localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-        }
-        return updatedUser;
-      }
-      return user;
-    });
+      if (!response.ok) throw new Error('Errore nell\'aggiornamento della password');
 
-    setUsers(updatedUsers);
-    localStorage.setItem('users', JSON.stringify(updatedUsers));
+      setEditingPassword(null);
+      setTempPassword('');
+    } catch (error) {
+      setError('Errore nell\'aggiornamento della password');
+      console.error('Update password error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const togglePasswordVisibility = (userId) => {
@@ -129,29 +227,33 @@ const AdminDashboard = ({ onClose }) => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
+            {error && (
+              <Alert>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
             <Input
               type="text"
               placeholder="Username"
               value={loginData.username}
               onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
+              disabled={isLoading}
             />
             <Input
               type="password"
               placeholder="Password"
               value={loginData.password}
               onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+              disabled={isLoading}
             />
-            <Button type="submit" className="w-full">Accedi</Button>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? 'Accesso in corso...' : 'Accedi'}
+            </Button>
           </form>
         </CardContent>
       </Card>
     );
   }
-
-  const filteredUsers = users.filter(user =>
-    user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <Card className="w-full">
@@ -168,6 +270,12 @@ const AdminDashboard = ({ onClose }) => {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          {error && (
+            <Alert>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <Input
@@ -175,6 +283,7 @@ const AdminDashboard = ({ onClose }) => {
               placeholder="Cerca..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={isLoading}
             />
           </div>
 
@@ -203,7 +312,10 @@ const AdminDashboard = ({ onClose }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map(user => (
+                    {users.filter(user =>
+                      user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      user.email.toLowerCase().includes(searchQuery.toLowerCase())
+                    ).map(user => (
                       <tr key={user.id} className="border-b">
                         <td className="p-2">{user.fullName}</td>
                         
@@ -216,10 +328,12 @@ const AdminDashboard = ({ onClose }) => {
                                 value={tempEmail}
                                 onChange={(e) => setTempEmail(e.target.value)}
                                 className="w-48"
+                                disabled={isLoading}
                               />
                               <Button
                                 size="sm"
                                 onClick={() => handleUpdateEmail(user.id)}
+                                disabled={isLoading}
                               >
                                 Salva
                               </Button>
@@ -230,6 +344,7 @@ const AdminDashboard = ({ onClose }) => {
                                   setEditingEmail(null);
                                   setTempEmail('');
                                 }}
+                                disabled={isLoading}
                               >
                                 Annulla
                               </Button>
@@ -244,13 +359,14 @@ const AdminDashboard = ({ onClose }) => {
                                   setEditingEmail(user.id);
                                   setTempEmail(user.email);
                                 }}
+                                disabled={isLoading}
                               >
                                 <Mail className="w-4 h-4" />
                               </Button>
                             </div>
                           )}
                         </td>
-
+                        
                         {/* Password */}
                         <td className="p-2">
                           {editingPassword === user.id ? (
@@ -260,11 +376,13 @@ const AdminDashboard = ({ onClose }) => {
                                   type={showPassword[user.id] ? "text" : "password"}
                                   value={tempPassword}
                                   onChange={(e) => setTempPassword(e.target.value)}
+                                  disabled={isLoading}
                                 />
                                 <button
                                   type="button"
                                   className="absolute right-2 top-1/2 transform -translate-y-1/2"
                                   onClick={() => togglePasswordVisibility(user.id)}
+                                  disabled={isLoading}
                                 >
                                   {showPassword[user.id] ? (
                                     <EyeOff className="w-4 h-4 text-gray-500" />
@@ -276,6 +394,7 @@ const AdminDashboard = ({ onClose }) => {
                               <Button
                                 size="sm"
                                 onClick={() => handleUpdatePassword(user.id)}
+                                disabled={isLoading}
                               >
                                 Salva
                               </Button>
@@ -286,6 +405,7 @@ const AdminDashboard = ({ onClose }) => {
                                   setEditingPassword(null);
                                   setTempPassword('');
                                 }}
+                                disabled={isLoading}
                               >
                                 Annulla
                               </Button>
@@ -297,6 +417,7 @@ const AdminDashboard = ({ onClose }) => {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => togglePasswordVisibility(user.id)}
+                                disabled={isLoading}
                               >
                                 {showPassword[user.id] ? (
                                   <EyeOff className="w-4 h-4" />
@@ -311,6 +432,7 @@ const AdminDashboard = ({ onClose }) => {
                                   setEditingPassword(user.id);
                                   setTempPassword(user.password);
                                 }}
+                                disabled={isLoading}
                               >
                                 <Lock className="w-4 h-4" />
                               </Button>
@@ -328,10 +450,12 @@ const AdminDashboard = ({ onClose }) => {
                                 onChange={(e) => setTempMinutes(e.target.value)}
                                 className="w-24"
                                 min="0"
+                                disabled={isLoading}
                               />
                               <Button
                                 size="sm"
                                 onClick={() => handleUpdateMinutes(user.id)}
+                                disabled={isLoading}
                               >
                                 Salva
                               </Button>
@@ -342,6 +466,7 @@ const AdminDashboard = ({ onClose }) => {
                                   setEditingMinutes(null);
                                   setTempMinutes('');
                                 }}
+                                disabled={isLoading}
                               >
                                 Annulla
                               </Button>
@@ -356,6 +481,7 @@ const AdminDashboard = ({ onClose }) => {
                                   setEditingMinutes(user.id);
                                   setTempMinutes(user.minutes.toString());
                                 }}
+                                disabled={isLoading}
                               >
                                 <Clock className="w-4 h-4" />
                               </Button>
@@ -368,6 +494,7 @@ const AdminDashboard = ({ onClose }) => {
                             variant="destructive"
                             size="sm"
                             onClick={() => handleDeleteUser(user.id)}
+                            disabled={isLoading}
                           >
                             Elimina
                           </Button>
@@ -380,7 +507,47 @@ const AdminDashboard = ({ onClose }) => {
             </TabsContent>
 
             <TabsContent value="stations" className="mt-4">
-              {/* Il contenuto esistente per le stazioni rimane invariato */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">Proprietario</th>
+                      <th className="text-left p-2">Posizione</th>
+                      <th className="text-left p-2">Stato</th>
+                      <th className="text-left p-2">Info Tecniche</th>
+                      <th className="text-left p-2">Info Aggiuntive</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stations.filter(station =>
+                      station.owner.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      station.location.toLowerCase().includes(searchQuery.toLowerCase())
+                    ).map(station => (
+                      <tr key={station.id} className="border-b">
+                        <td className="p-2">{station.owner}</td>
+                        <td className="p-2">{station.location}</td>
+                        <td className="p-2">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                            station.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {station.available ? 'Disponibile' : 'In uso'}
+                          </span>
+                        </td>
+                        <td className="p-2">
+                          <div className="text-sm">
+                            <p>Potenza: {station.power} kW</p>
+                            <p>Connettore: {station.connectorType}</p>
+                            <p>Corrente: {station.currentType}</p>
+                          </div>
+                        </td>
+                        <td className="p-2">
+                          {station.additionalInfo || 'Nessuna informazione aggiuntiva'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </TabsContent>
           </Tabs>
         </div>
