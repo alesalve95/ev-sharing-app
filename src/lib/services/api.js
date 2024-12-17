@@ -26,12 +26,23 @@ async function fetchWithAuth(endpoint, options = {}) {
 
 export const authService = {
   async register(userData) {
-    const response = await fetchWithAuth('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-    localStorage.setItem('token', response.token);
-    return response;
+    console.log('Invio richiesta di registrazione:', userData);
+    try {
+      const response = await fetchWithAuth('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(userData),
+      });
+      console.log('Risposta registrazione ricevuta:', response);
+      if (response.token) {
+        localStorage.setItem('token', response.token);
+      } else {
+        console.error('Token mancante nella risposta');
+      }
+      return response;
+    } catch (error) {
+      console.error('Errore durante la registrazione:', error);
+      throw error;
+    }
   },
 
   async login(credentials) {

@@ -5,14 +5,17 @@ import jwt from 'jsonwebtoken';
 
 export async function POST(req) {
   try {
+    console.log('Ricevuta richiesta di registrazione');
     await dbConnect();
     
     const body = await req.json();
+    console.log('Dati ricevuti:', body);
     const { firstName, lastName, email, password } = body;
 
     // Verifica se l'utente esiste già
     const existingUser = await User.findOne({ email });
     if (existingUser) {
+      console.log('Email già registrata:', email);
       return NextResponse.json(
         { error: 'Email già registrata' },
         { status: 400 }
@@ -24,8 +27,11 @@ export async function POST(req) {
       firstName,
       lastName,
       email,
-      password
+      password,
+      minutes: 60
     });
+
+    console.log('Utente creato:', user._id);
 
     // Crea il token JWT
     const token = jwt.sign(
@@ -39,14 +45,15 @@ export async function POST(req) {
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-      fullName: user.fullName,
+      fullName: `${user.firstName} ${user.lastName}`,
       minutes: user.minutes,
       token
     };
 
+    console.log('Invio risposta registrazione');
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error in register:', error);
+    console.error('Errore in register:', error);
     return NextResponse.json(
       { error: 'Errore durante la registrazione' },
       { status: 500 }
