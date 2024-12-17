@@ -31,6 +31,9 @@ const Auth = ({ onLogin }) => {
 
     try {
       if (isRegistration) {
+        // Log per debug
+        console.log('Inizio processo di registrazione');
+        
         // Validazione
         const newErrors = {};
         if (!formData.firstName.trim()) newErrors.firstName = 'Nome richiesto';
@@ -46,12 +49,15 @@ const Auth = ({ onLogin }) => {
           return;
         }
 
+        console.log('Generazione codice di verifica');
         // Generazione codice di verifica
         const code = Math.floor(100000 + Math.random() * 900000).toString();
+        console.log('Codice generato:', code);
         setGeneratedCode(code);
         setRegistrationStep(2);
         
       } else {
+        console.log('Tentativo di login');
         // Login
         const user = await authService.login({
           email: formData.email,
@@ -60,8 +66,52 @@ const Auth = ({ onLogin }) => {
         onLogin(user);
       }
     } catch (error) {
+      console.error('Errore nel processo:', error);
       setErrors({
         submit: error.message
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerification = async (e) => {
+    e.preventDefault();
+    console.log('Inizio verifica codice');
+    console.log('Codice inserito:', verificationCode);
+    console.log('Codice generato:', generatedCode);
+    
+    setIsLoading(true);
+    setErrors({});
+
+    try {
+      if (verificationCode === generatedCode) {
+        console.log('Codice corretto, procedo con la registrazione');
+        const userData = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password
+        };
+        console.log('Dati utente da registrare:', userData);
+
+        const user = await authService.register(userData);
+        console.log('Risposta registrazione:', user);
+
+        if (user && user.token) {
+          console.log('Registrazione completata con successo');
+          onLogin(user);
+        } else {
+          throw new Error('Dati utente non validi dalla registrazione');
+        }
+      } else {
+        console.log('Codice non valido');
+        setErrors({ verification: 'Codice non valido' });
+      }
+    } catch (error) {
+      console.error('Errore durante la verifica:', error);
+      setErrors({
+        submit: error.message || 'Errore durante la registrazione'
       });
     } finally {
       setIsLoading(false);
