@@ -70,24 +70,37 @@ const Auth = ({ onLogin }) => {
 
   const handleVerification = async (e) => {
     e.preventDefault();
-    setErrors({});
     setIsLoading(true);
-
+    setErrors({});
+  
     try {
       if (verificationCode === generatedCode) {
+        // Log per debug
+        console.log('Codice verificato, procedo con la registrazione');
+        
         const user = await authService.register({
           firstName: formData.firstName,
           lastName: formData.lastName,
           email: formData.email,
           password: formData.password
         });
-        onLogin(user);
+  
+        // Log per debug
+        console.log('Registrazione completata:', user);
+        
+        // Assicuriamoci che onLogin venga chiamato con i dati corretti
+        if (user && user.token) {
+          onLogin(user);
+        } else {
+          throw new Error('Dati utente non validi dalla registrazione');
+        }
       } else {
         setErrors({ verification: 'Codice non valido' });
       }
     } catch (error) {
+      console.error('Errore durante la verifica:', error);
       setErrors({
-        submit: error.message
+        submit: error.message || 'Errore durante la registrazione'
       });
     } finally {
       setIsLoading(false);
