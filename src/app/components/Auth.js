@@ -31,10 +31,8 @@ const Auth = ({ onLogin }) => {
 
     try {
       if (isRegistration) {
-        // Log per debug
         console.log('Inizio processo di registrazione');
         
-        // Validazione
         const newErrors = {};
         if (!formData.firstName.trim()) newErrors.firstName = 'Nome richiesto';
         if (!formData.lastName.trim()) newErrors.lastName = 'Cognome richiesto';
@@ -50,7 +48,6 @@ const Auth = ({ onLogin }) => {
         }
 
         console.log('Generazione codice di verifica');
-        // Generazione codice di verifica
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         console.log('Codice generato:', code);
         setGeneratedCode(code);
@@ -58,7 +55,6 @@ const Auth = ({ onLogin }) => {
         
       } else {
         console.log('Tentativo di login');
-        // Login
         const user = await authService.login({
           email: formData.email,
           password: formData.password
@@ -117,46 +113,6 @@ const Auth = ({ onLogin }) => {
       setIsLoading(false);
     }
   };
-
-  const handleVerification = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrors({});
-  
-    try {
-      if (verificationCode === generatedCode) {
-        // Log per debug
-        console.log('Codice verificato, procedo con la registrazione');
-        
-        const user = await authService.register({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          password: formData.password
-        });
-  
-        // Log per debug
-        console.log('Registrazione completata:', user);
-        
-        // Assicuriamoci che onLogin venga chiamato con i dati corretti
-        if (user && user.token) {
-          onLogin(user);
-        } else {
-          throw new Error('Dati utente non validi dalla registrazione');
-        }
-      } else {
-        setErrors({ verification: 'Codice non valido' });
-      }
-    } catch (error) {
-      console.error('Errore durante la verifica:', error);
-      setErrors({
-        submit: error.message || 'Errore durante la registrazione'
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   if (registrationStep === 2 && isRegistration) {
     return (
       <div className="space-y-4 text-center">
@@ -172,6 +128,7 @@ const Auth = ({ onLogin }) => {
             placeholder="Inserisci il codice di verifica"
             value={verificationCode}
             onChange={(e) => setVerificationCode(e.target.value)}
+            disabled={isLoading}
           />
           {errors.verification && (
             <Alert>
@@ -267,6 +224,7 @@ const Auth = ({ onLogin }) => {
               type="button"
               className="absolute right-3 top-1/2 transform -translate-y-1/2"
               onClick={() => setShowPassword(!showPassword)}
+              disabled={isLoading}
             >
               {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
