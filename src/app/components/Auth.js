@@ -73,46 +73,60 @@ const Auth = ({ onLogin }) => {
 
   const handleVerification = async (e) => {
     e.preventDefault();
-    console.log('Inizio verifica codice');
-    console.log('Codice inserito:', verificationCode);
-    console.log('Codice generato:', generatedCode);
+    console.log('1. Inizio verifica codice');
+    console.log('2. Codice inserito:', verificationCode);
+    console.log('3. Codice generato:', generatedCode);
     
-    setIsLoading(true);
+    setIsLoading(true);  // Attiva il loading
     setErrors({});
 
-    try {
-      if (verificationCode === generatedCode) {
-        console.log('Codice corretto, procedo con la registrazione');
-        const userData = {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          password: formData.password
-        };
-        console.log('Dati utente da registrare:', userData);
-
-        const user = await authService.register(userData);
-        console.log('Risposta registrazione:', user);
-
-        if (user && user.token) {
-          console.log('Registrazione completata con successo');
-          onLogin(user);
-        } else {
-          throw new Error('Dati utente non validi dalla registrazione');
-        }
-      } else {
-        console.log('Codice non valido');
+    // Verifica immediata dei codici
+    if (verificationCode !== generatedCode) {
+        console.log('4. Codice non valido - non corrispondono');
         setErrors({ verification: 'Codice non valido' });
-      }
-    } catch (error) {
-      console.error('Errore durante la verifica:', error);
-      setErrors({
-        submit: error.message || 'Errore durante la registrazione'
-      });
-    } finally {
-      setIsLoading(false);
+        setIsLoading(false);
+        return;
     }
-  };
+
+    console.log('5. Codice valido, preparo i dati utente');
+    const userData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        password: formData.password
+    };
+    console.log('6. Dati utente preparati:', userData);
+
+    try {
+        console.log('7. Inizio chiamata API register');
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userData)
+        });
+        console.log('8. Risposta ricevuta:', response.status);
+        
+        const data = await response.json();
+        console.log('9. Dati risposta:', data);
+
+        if (data.token) {
+            console.log('10. Token ricevuto, login in corso');
+            onLogin(data);
+        } else {
+            throw new Error('Token non ricevuto nella risposta');
+        }
+    } catch (error) {
+        console.error('11. Errore durante la registrazione:', error);
+        setErrors({
+            submit: error.message || 'Errore durante la registrazione'
+        });
+    } finally {
+        console.log('12. Fine processo');
+        setIsLoading(false);
+    }
+};
   if (registrationStep === 2 && isRegistration) {
     return (
       <div className="space-y-4 text-center">
